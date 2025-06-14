@@ -6,8 +6,6 @@ from contextlib import asynccontextmanager
 from tables import Base, Group
 from configs import ENGINE, ASYNC_SESSION, IMAGE_BASE_URL
 
-app = FastAPI()
-
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
@@ -37,3 +35,5 @@ async def get_group_data():
             if group_list:
                 data.append({"group": g.group, "group_list": group_list})
         return data
+
+app = FastAPI(lifespan=lifespan)
