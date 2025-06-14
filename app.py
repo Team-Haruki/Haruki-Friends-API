@@ -1,23 +1,23 @@
-import asyncio
+from fastapi import FastAPI
 from sqlalchemy import select
-from quart import Quart, jsonify
-from hypercorn.asyncio import serve
-from hypercorn.config import Config
 from sqlalchemy.orm import selectinload
+from contextlib import asynccontextmanager
 
 from tables import Base, Group
-from configs import ENGINE, ASYNC_SESSION, HOST, PORT
+from configs import ENGINE, ASYNC_SESSION, IMAGE_BASE_URL
 
-app = Quart(__name__)
+app = FastAPI()
 
 
-@app.before_serving
-async def setup_db():
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
     async with ENGINE.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    yield
+    await ENGINE.dispose()
 
 
-@app.route("/friend_groups")
+@app.get("/friend_groups")
 async def get_group_data():
     async with ASYNC_SESSION() as session:
         result = await session.execute(select(Group).options(selectinload(Group.group_list)))
@@ -25,20 +25,15 @@ async def get_group_data():
         data = []
         for g in groups:
             group_list = [
-                {"name": x.name, "avatar": x.avatar, "bg": x.bg, "group_info": x.group_info, "detail": x.detail}
+                {
+                    "name": x.name,
+                    "avatar": IMAGE_BASE_URL + x.avatar if x.avatar else None,
+                    "bg": IMAGE_BASE_URL + x.bg if x.bg else None,
+                    "group_info": x.group_info,
+                    "detail": x.detail,
+                }
                 for x in g.group_list
             ]
             if group_list:
                 data.append({"group": g.group, "group_list": group_list})
-        return jsonify(data)
-
-
-@app.after_serving
-async def shutdown():
-    await ENGINE.dispose()
-
-
-if __name__ == "__main__":
-    config = Config()
-    config.bind = [f"{HOST}:{PORT}"]
-    asyncio.run(serve(app, config))
+        return data
